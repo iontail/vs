@@ -27,12 +27,12 @@ Both are converted to rankings for comparison.
 
 For all pairs (i, j) where i < j:
 
-- **Concordant pair (C)**: Both rankings agree on order
+- **Concordant pair (C)**: The number of pairs where both rankings agree on order
   ```
   (rᵢ − rⱼ)(ŝᵢ − ŝⱼ) > 0
   ```
   
-- **Discordant pair (D)**: Rankings disagree on order
+- **Discordant pair (D)**: The number of pairs where Rankings disagree on order
   ```
   (rᵢ − rⱼ)(ŝᵢ − ŝⱼ) < 0
   ```
@@ -69,42 +69,39 @@ Kendall's Tau:
 ### TVSum Dataset
 
 1. **Human annotations**: 20 users rate each shot (1-5 scale)
-2. **Ground truth**: Average scores across users
-3. **Evaluation protocol**:
+2. **Evaluation protocol**:
    ```python
-   # Convert scores to ranks
-   human_ranks = rankdata(human_scores)
-   pred_ranks = rankdata(predicted_scores)
+   # Compute Kendall's Tau for EACH annotator
+   taus = []
+   for user_scores in all_user_scores:  # 20 annotators
+       tau, p_value = kendalltau(user_scores, predicted_scores)
+       taus.append(tau)
    
-   # Compute Kendall's Tau
-   tau, p_value = kendalltau(human_ranks, pred_ranks)
+   # Average across all annotators
+   final_tau = np.mean(taus)
    ```
-
-4. **Typical usage**: Reported alongside F-score metrics
 
 ### SumMe Dataset
 
-1. **Human annotations**: 15-18 users create binary summaries
-2. **Importance scores**: Derived from selection frequency
-3. **Evaluation protocol**:
+1. **Human annotations**: 15-18 users create binary summaries (0/1 per frame)
+2. **Evaluation protocol**:
    ```python
-   # Aggregate multiple user annotations
-   importance_scores = user_selections.mean(axis=0)
+   # Method 1: Compute tau for EACH annotator (Standard)
+   taus = []
+   for user_summary in all_user_summaries:  # 15-18 annotators
+       # user_summary: binary [0,1] indicating frame selection
+       tau = kendalltau(user_summary, predicted_scores)[0]
+       taus.append(tau)
    
-   # Rank correlation with predicted scores
-   tau = kendalltau(importance_scores, predicted_scores)[0]
+   final_tau = np.mean(taus)
+   
+   # Method 2: Use aggregated importance scores (Alternative)
+   # importance_scores = all_user_summaries.mean(axis=0)
+   # tau = kendalltau(importance_scores, predicted_scores)[0]
    ```
 
+3. **Note**: Most standard benchmarks use **Method 1** (per-annotator evaluation)
 4. **Cross-validation**: Often computed per-fold and averaged
-
----
-
-## Advantages for Video Summarization
-
-1. **Scale-invariant**: Robust to different scoring ranges
-2. **Outlier-resistant**: Focuses on ordering, not magnitude
-3. **Interpretable**: Direct measure of ranking agreement
-4. **Annotation-friendly**: Works well with noisy human labels
 
 ---
 
@@ -114,26 +111,65 @@ Kendall's Tau:
 import numpy as np
 from scipy.stats import kendalltau
 
-def evaluate_kendall_tau(human_scores, predicted_scores):
+def evaluate_kendall_tau_tvsum(all_user_scores, predicted_scores):
     """
-    Compute Kendall's Tau for video summarization
+    Compute Kendall's Tau for TVSum dataset
     
     Args:
-        human_scores: Array of human importance scores [N]
+        all_user_scores: Array of shape [num_annotators, N]
         predicted_scores: Array of predicted scores [N]
     
     Returns:
-        tau: Kendall's Tau coefficient
+        mean_tau: Average Kendall's Tau across all annotators
     """
-    tau, p_value = kendalltau(human_scores, predicted_scores)
-    return tau
+    taus = []
+    for user_scores in all_user_scores:
+        tau, _ = kendalltau(user_scores, predicted_scores)
+        taus.append(tau)
+    
+    return np.mean(taus)
 
-# Example usage
-human_scores = np.array([3.2, 4.5, 2.1, 4.8, 3.7])
+
+def evaluate_kendall_tau_summe(all_user_summaries, predicted_scores):
+    """
+    Compute Kendall's Tau for SumMe dataset
+    
+    Args:
+        all_user_summaries: Binary array [num_annotators, N]
+        predicted_scores: Array of predicted scores [N]
+    
+    Returns:
+        mean_tau: Average Kendall's Tau across all annotators
+    """
+    taus = []
+    for user_summary in all_user_summaries:
+        tau, _ = kendalltau(user_summary, predicted_scores)
+        taus.append(tau)
+    
+    return np.mean(taus)
+
+
+# Example usage - TVSum
+all_user_scores = np.array([
+    [3.2, 4.5, 2.1, 4.8, 3.7],  # User 1
+    [3.0, 4.2, 2.5, 4.9, 3.5],  # User 2
+    # ... 20 users total
+])
 predicted_scores = np.array([0.45, 0.78, 0.23, 0.89, 0.56])
 
-tau = evaluate_kendall_tau(human_scores, predicted_scores)
-print(f"Kendall's Tau: {tau:.3f}")
+mean_tau = evaluate_kendall_tau_tvsum(all_user_scores, predicted_scores)
+print(f"TVSum Kendall's Tau: {mean_tau:.3f}")
+
+
+# Example usage - SumMe
+all_user_summaries = np.array([
+    [0, 1, 0, 1, 1],  # User 1 binary summary
+    [0, 1, 0, 1, 0],  # User 2 binary summary
+    # ... 15-18 users total
+])
+
+mean_tau = evaluate_kendall_tau_summe(all_user_summaries, predicted_scores)
+print(f"SumMe Kendall's Tau: {mean_tau:.3f}")
 ```
 
 ---
@@ -144,10 +180,11 @@ Kendall's Tau answers: **"Did the model correctly rank which segments are more i
 
 It evaluates global ordering consistency through pairwise comparisons, making it ideal for importance-based video summarization evaluation.
 
+**Important**: Standard evaluation computes tau for **each annotator individually** and then averages, rather than aggregating annotations first.
+
 ---
 
 ## References
 
 - Kendall, M. G. (1938). "A new measure of rank correlation"
 - Video summarization benchmarks: TVSum (CVPR 2015), SumMe (ECCV 2014)
-- Standard evaluation protocols in video summarization literature

@@ -1,209 +1,200 @@
-# Spearman's Rank Correlation (ρ) for Video Summarization
+# Spearman’s Rank Correlation (ρ) for Video Summarization
 
 ## Overview
 
-Spearman's rank correlation coefficient measures the **monotonic relationship** between two ranked variables. In video summarization, it evaluates how well predicted importance scores follow the overall distribution pattern of human annotations.
+Spearman’s rank correlation coefficient (ρ) measures the **monotonic relationship**
+between two ranked variables.  
+In video summarization, it is used to evaluate whether a model preserves the **same
+relative importance ordering of video segments** as human annotations, regardless
+of absolute score scale.
+
+Importantly, Spearman’s ρ does **not** compare score distributions or summary quality
+directly; it only evaluates agreement in **ranking trends**.
+
+---
 
 ## Purpose
 
-While Kendall's Tau focuses on pairwise ordering, Spearman's ρ assesses the **global similarity of rank distributions**, capturing whether the model's predictions maintain the same relative trend as human judgments.
+While **Kendall’s Tau (τ)** focuses on pairwise ordering consistency,
+**Spearman’s ρ** assesses **global monotonic agreement** between two rankings.
+
+In the context of video summarization, ρ answers the question:
+
+> *Does the model rank video segments in a way that is monotonically consistent
+> with human judgments of importance?*
 
 ---
 
 ## Problem Formulation
 
-Given a video with N segments:
+Given a video divided into \(N\) segments:
 
-- Human annotation scores → ranks: **r** = {r₁, r₂, ..., rₙ}
-- Model predicted scores → ranks: **s** = {s₁, s₂, ..., sₙ}
+- Human annotation scores → ranks:  
+  \[
+  \mathbf{r} = \{r_1, r_2, \dots, r_N\}
+  \]
+
+- Model-predicted scores → ranks:  
+  \[
+  \mathbf{s} = \{s_1, s_2, \dots, s_N\}
+  \]
+
+Ranks are obtained by sorting scores; ties are allowed and handled by assigning
+average ranks.
 
 ---
 
 ## Definition
 
-### Rank Difference
+### Spearman’s Rank Correlation Coefficient
 
-For each segment i:
-```
-dᵢ = rᵢ − sᵢ
-```
+The **general and standard definition** of Spearman’s ρ is:
 
-### Spearman's Coefficient Formula
+\[
+\rho = \frac{\operatorname{cov}(\mathbf{r}, \mathbf{s})}
+             {\sigma_{\mathbf{r}} \, \sigma_{\mathbf{s}}}
+\]
 
-When no ties exist:
-```
-ρ = 1 − (6 Σdᵢ²) / (N(N² − 1))
-```
+where:
+- \(\operatorname{cov}(\cdot,\cdot)\) is the covariance between rank vectors,
+- \(\sigma_{\mathbf{r}}, \sigma_{\mathbf{s}}\) are the standard deviations of the ranks.
 
-General formula (with ties):
-```
-ρ = cov(r, s) / (σᵣ · σₛ)
-```
+This definition is equivalent to **computing Pearson correlation on ranks** and
+is valid **with or without ties**.
 
-where cov is covariance and σ is standard deviation of ranks.
+> Note: Closed-form formulas based on rank differences (e.g., involving \(\sum d_i^2\))
+> apply only when there are no ties. In practice, video summarization data almost
+> always contains ties, so the covariance-based definition is used.
 
 ---
 
 ## Interpretation
 
-| ρ Value | Meaning |
-|---------|---------|
-| +1.0 | Perfect monotonic positive relationship |
-| 0.0 | No monotonic correlation |
-| -1.0 | Perfect monotonic negative relationship |
+| ρ value | Interpretation |
+|--------:|----------------|
+| +1.0 | Perfect monotonic agreement |
+|  0.0 | No monotonic relationship |
+| −1.0 | Perfect inverse monotonic relationship |
 
-**In video summarization context:**
-> ρ measures whether the model's predictions follow the **same importance distribution pattern** as human annotations
+**In video summarization**:  
+A higher ρ indicates that segments judged as more important by humans
+are also ranked as more important by the model, even if absolute scores differ.
 
 ---
 
-## Computation in TVSum and SumMe
+## Usage in Popular Datasets
 
 ### TVSum Dataset
 
-1. **Annotation structure**: 20 users × K shots (1-5 Likert scale)
-2. **Ground truth generation**:
-   ```python
-   # Average across users
-   human_scores = user_annotations.mean(axis=0)  # Shape: [K]
-   ```
+**Annotation structure**
+- 20 annotators per video
+- Segment-level importance scores (Likert scale: 1–5)
 
-3. **Evaluation protocol**:
-   ```python
-   from scipy.stats import spearmanr
-   
-   # Compute Spearman correlation
-   rho, p_value = spearmanr(human_scores, predicted_scores)
-   ```
-
-4. **Typical range**: ρ ∈ [0.3, 0.7] for state-of-the-art methods
-
-### SumMe Dataset
-
-1. **Annotation structure**: 15-18 binary summaries per video
-2. **Importance derivation**:
-   ```python
-   # Count selection frequency
-   importance = binary_summaries.sum(axis=0) / n_users
-   # Values range from 0 (never selected) to 1 (always selected)
-   ```
-
-3. **Evaluation protocol**:
-   ```python
-   # Per-user evaluation (common approach)
-   rho_scores = []
-   for user_summary in user_summaries:
-       user_importance = derive_importance(user_summary)
-       rho = spearmanr(user_importance, predicted_scores)[0]
-       rho_scores.append(rho)
-   
-   # Report average
-   mean_rho = np.mean(rho_scores)
-   ```
-
-4. **Cross-validation**: 5-fold split, averaged results
-
----
-
-## Comparison with Kendall's Tau
-
-| Aspect | Spearman (ρ) | Kendall (τ) |
-|--------|--------------|-------------|
-| **Comparison unit** | Individual rank differences | Pairwise order agreements |
-| **Sensitivity** | Sensitive to large rank deviations | Sensitive to order inversions |
-| **Interpretation** | Global distribution similarity | Local ordering consistency |
-| **Computation** | O(N log N) with sorting | O(N²) naive, O(N log N) optimized |
-| **Typical values** | Often higher magnitude | More conservative |
-
----
-
-## Advantages for Video Summarization
-
-1. **Distribution-aware**: Captures overall score patterns
-2. **Continuous scores**: Works naturally with real-valued predictions
-3. **Computationally efficient**: Faster than Kendall for large N
-4. **Standard metric**: Widely adopted in ranking evaluation
-
----
-
-## Implementation Example
+**Common evaluation practice**
+1. Compute Spearman’s ρ **separately for each annotator**
+2. Average ρ across annotators
 
 ```python
-import numpy as np
 from scipy.stats import spearmanr
+import numpy as np
 
-def evaluate_spearman(human_scores, predicted_scores):
-    """
-    Compute Spearman correlation for video summarization
-    
-    Args:
-        human_scores: Array of human importance scores [N]
-        predicted_scores: Array of predicted scores [N]
-    
-    Returns:
-        rho: Spearman correlation coefficient
-        p_value: Statistical significance
-    """
-    rho, p_value = spearmanr(human_scores, predicted_scores)
-    return rho, p_value
+rho_scores = []
+for user_scores in all_user_scores:  # shape: [20, N]
+    rho, _ = spearmanr(user_scores, predicted_scores)
+    rho_scores.append(rho)
 
-# Example: TVSum-style evaluation
-human_scores = np.array([3.2, 4.5, 2.1, 4.8, 3.7])
-predicted_scores = np.array([0.45, 0.78, 0.23, 0.89, 0.56])
+mean_rho = np.mean(rho_scores)
+std_rho = np.std(rho_scores)
 
-rho, p = evaluate_spearman(human_scores, predicted_scores)
-print(f"Spearman's ρ: {rho:.3f} (p={p:.4f})")
+This protocol evaluates how consistently the model’s ranking aligns
+with each individual human judgment.
 
-# Example: SumMe-style with multiple users
-def evaluate_summe_spearman(user_summaries, predicted_scores):
-    """Evaluate with multiple user annotations"""
-    rho_scores = []
-    for user_summary in user_summaries:
-        # Convert binary summary to importance scores
-        importance = user_summary.astype(float)
-        rho = spearmanr(importance, predicted_scores)[0]
-        rho_scores.append(rho)
-    return np.mean(rho_scores), np.std(rho_scores)
-```
+⸻
 
----
+SumMe Dataset (Non-standard Usage)
 
-## Practical Considerations
+Important note
+Spearman’s ρ is not part of the official SumMe benchmark.
+	•	Standard SumMe evaluation:
+F-score between predicted summaries and binary human summaries.
+	•	Spearman’s ρ may be reported only in alternative settings where the task
+is framed as importance score regression, not summary selection.
 
-### Handling Ties
+If used (non-standard):
+	•	Compute ρ per annotator using binary vectors (0/1) vs predicted scores
+	•	Average across annotators
 
-When multiple segments have identical scores:
-- Use `scipy.stats.spearmanr` which handles ties automatically
-- Ties are assigned average ranks
+from scipy.stats import spearmanr
+import numpy as np
 
-### Statistical Significance
+rho_scores = []
+for user_summary in all_user_summaries:  # shape: [15–18, N]
+    rho, _ = spearmanr(user_summary, predicted_scores)
+    rho_scores.append(rho)
 
-Always report p-values when possible:
-```python
-rho, p_value = spearmanr(human_scores, predicted_scores)
+mean_rho = np.mean(rho_scores)
+
+Results obtained this way should not be directly compared
+to official SumMe leaderboard results.
+
+⸻
+
+Comparison with Kendall’s Tau
+
+Aspect	Spearman (ρ)	Kendall (τ)
+Comparison unit	Rank vectors	Rank pairs
+Sensitivity	Large rank deviations	Local order inversions
+Interpretation	Global monotonic agreement	Local ordering consistency
+Ties	Naturally supported	Requires tie-aware variants
+Typical magnitude	Often higher	More conservative
+
+
+⸻
+
+Advantages in Video Summarization Research
+	1.	Order-aware: Captures global monotonic relationships
+	2.	Scale-invariant: Independent of absolute score magnitudes
+	3.	Tie-robust: Suitable for averaged or discrete annotations
+	4.	Efficient: Computable in (O(N \log N)) time
+
+⸻
+
+Practical Considerations
+
+Handling Ties
+	•	Use implementations that handle ties correctly (e.g., scipy.stats.spearmanr)
+	•	Tied scores are assigned average ranks automatically
+
+Statistical Significance
+
+rho, p_value = spearmanr(user_scores, predicted_scores)
 if p_value < 0.05:
-    print(f"Correlation is statistically significant: ρ={rho:.3f}")
-```
+    print(f"Statistically significant correlation: ρ={rho:.3f}")
 
-### Dataset-Specific Notes
+Reporting Results
+	•	Always specify:
+	•	Per-annotator vs aggregated evaluation
+	•	Dataset and split protocol
+	•	Avoid comparing ρ values across different evaluation setups
 
-**TVSum**: Higher agreement between users → higher ρ values expected
+⸻
 
-**SumMe**: More diverse annotations → moderate ρ values are normal
+Key Takeaway
 
----
+Spearman’s ρ evaluates global monotonic agreement in importance rankings.
 
-## Key Takeaway
+In video summarization, it answers:
 
-Spearman's ρ answers: **"Does the model's importance distribution follow the same trend as human annotations?"**
+Does the model preserve the same relative importance ordering of video segments
+as human annotators, independent of absolute score scale?
 
-It evaluates global ranking similarity, making it ideal for assessing whether the model captures the overall importance pattern across the video.
+It is standard for importance ranking evaluation (e.g., TVSum),
+but not a replacement for F-score–based summary evaluation (e.g., SumMe).
 
----
+⸻
 
-## References
+References
+	•	Spearman, C. (1904). The proof and measurement of association between two things
+	•	Song et al., TVSum: Summarizing Web Videos, CVPR 2015
+	•	Gygli et al., Creating Summaries from User Videos, ECCV 2014
 
-- Spearman, C. (1904). "The proof and measurement of association between two things"
-- TVSum: Song et al. (CVPR 2015)
-- SumMe: Gygli et al. (ECCV 2014)
-- Standard evaluation protocols in video summarization benchmarks
