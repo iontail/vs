@@ -1,5 +1,9 @@
 tvsum50_ver_1_1
 *.pyc
 */*.pyc
-
 */*
+
+!metric_explain/*
+!knapsack/*
+!kts/*
+!*/*.py
