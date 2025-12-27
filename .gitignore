@@ -3,7 +3,8 @@ tvsum50_ver_1_1
 */*.pyc
 */*
 
-!metric_explain/*
-!knapsack/*
-!kts/*
+!materials_for_understanding/metric_explain/*
+!materials_for_understanding/knapsack/*
+!materials_for_understanding/kts/*
 !*/*.py
+!*/*/*.py
